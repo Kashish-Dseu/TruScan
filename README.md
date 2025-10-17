@@ -1,0 +1,2 @@
+# TruScan
+A Rumour Detector
