@@ -2,21 +2,35 @@ import os
 import streamlit as st
 import re
 import pandas as pd
-from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
-# Ensure NLTK stopwords are available and cache them
+# Try to import NLTK and data; be resilient if it's missing in the environment.
+# We avoid importing PorterStemmer at module import time without guarding it.
 try:
-    from nltk.corpus import stopwords
-    STOP_WORDS = set(stopwords.words('english'))
-except LookupError:
     import nltk
-    nltk.download('stopwords')
-    from nltk.corpus import stopwords
+    # Download stopwords if not present (quiet=True avoids noisy output)
+    try:
+        from nltk.corpus import stopwords
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
+        from nltk.corpus import stopwords
     STOP_WORDS = set(stopwords.words('english'))
+
+    # Try to import PorterStemmer; if it fails, we'll fall back later.
+    try:
+        from nltk.stem.porter import PorterStemmer
+        ps = PorterStemmer()
+    except Exception:
+        ps = None
+except Exception:
+    # NLTK isn't available; provide a minimal fallback stopword list and no stemmer.
+    STOP_WORDS = {
+        'the', 'and', 'a', 'an', 'in', 'on', 'at', 'for', 'to', 'is', 'it', 'of', 'by', 'with', 'that'
+    }
+    ps = None
 
 # Load data (add simple error handling)
 DATA_PATH = 'Fake.csv'
@@ -39,12 +53,21 @@ news_df['type'] = news_df['type'].astype(str).str.lower()
 news_df['label'] = news_df['type'].apply(lambda t: 1 if any(k in t for k in keywords) else 0)
 
 # Stemming / cleaning function (uses cached stop words)
-ps = PorterStemmer()
+def simple_stem(word: str) -> str:
+    # If we have NLTK's PorterStemmer, use it; otherwise a tiny heuristic fallback.
+    if ps:
+        return ps.stem(word)
+    # fallback: remove common suffixes (very naive)
+    for suf in ('ing', 'ly', 'ed', 's'):
+        if word.endswith(suf) and len(word) > len(suf) + 2:
+            return word[:-len(suf)]
+    return word
+
 def clean_and_stem(text: str) -> str:
     text = re.sub('[^a-zA-Z]', ' ', text)
-    text = text.lower().split()
-    text = [ps.stem(word) for word in text if word not in STOP_WORDS]
-    return ' '.join(text)
+    words = text.lower().split()
+    words = [simple_stem(w) for w in words if w not in STOP_WORDS]
+    return ' '.join(words)
 
 # Apply cleaning/stemming to the content column
 news_df['content'] = news_df['content'].apply(clean_and_stem)
