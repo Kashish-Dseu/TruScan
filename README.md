@@ -1,9 +1,6 @@
 # TruScan
-Based on the files you uploaded—specifically the Jupyter Notebook (`Rumour Detector.ipynb`), the Python script (`Rumour_Detector.py`), and the CSV file (`fake.csv`)—your project uses a **Logistic Regression** model with **TF-IDF** vectorization for rumor detection.
 
-Here is a comprehensive `README.md` file tailored to your repository.
 
------
 
 # 🕵️ Rumour Detector: NLP-Based Fake News Classification
 
