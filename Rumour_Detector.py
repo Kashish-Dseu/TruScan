@@ -33,7 +33,7 @@ except Exception:
     ps = None
 
 # Load data (add simple error handling)
-DATA_PATH = 'Fake.csv'
+DATA_PATH = 'compressed_data (1).csv.gz'
 if not os.path.exists(DATA_PATH):
     st.error(f"Data file not found: {DATA_PATH}")
     st.stop()
