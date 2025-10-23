@@ -1,65 +1,85 @@
+import os
 import streamlit as st
-import numpy as np
 import re
 import pandas as pd
-from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
-# Load data
-news_df = pd.read_csv('Fake.csv')
+# Ensure NLTK stopwords are available and cache them
+try:
+    from nltk.corpus import stopwords
+    STOP_WORDS = set(stopwords.words('english'))
+except LookupError:
+    import nltk
+    nltk.download('stopwords')
+    from nltk.corpus import stopwords
+    STOP_WORDS = set(stopwords.words('english'))
+
+# Load data (add simple error handling)
+DATA_PATH = 'Fake.csv'
+if not os.path.exists(DATA_PATH):
+    st.error(f"Data file not found: {DATA_PATH}")
+    st.stop()
+
+news_df = pd.read_csv(DATA_PATH)
 news_df = news_df.fillna(' ')
-news_df['content'] = news_df['author'] + ' ' + news_df['title']
+
+# Create a content field used for modelling
+news_df['content'] = news_df['author'].astype(str) + ' ' + news_df['title'].astype(str)
+
+# Define keywords and create labels:
+# 1 => Rumour (e.g., 'fake', 'conspiracy', ...) ; 0 => Not Rumour
 keywords = ['bias', 'conspiracy', 'fake', 'bs', 'hate']
-news_df['label'] = [
-    0 if row_type in keywords else 1 
-    for row_type in news_df['type']
-]
-X = news_df.drop('label', axis=1)
-y = news_df['label']
+# Normalize the 'type' column to lowercase string before checking
+news_df['type'] = news_df['type'].astype(str).str.lower()
+# Use substring match so values like 'fake' or 'fake news' are included
+news_df['label'] = news_df['type'].apply(lambda t: 1 if any(k in t for k in keywords) else 0)
 
-# Define stemming function
+# Stemming / cleaning function (uses cached stop words)
 ps = PorterStemmer()
-def stemming(content):
-    stemmed_content = re.sub('[^a-zA-Z]',' ',content)
-    stemmed_content = stemmed_content.lower()
-    stemmed_content = stemmed_content.split()
-    stemmed_content = [ps.stem(word) for word in stemmed_content if not word in stopwords.words('english')]
-    stemmed_content = ' '.join(stemmed_content)
-    return stemmed_content
+def clean_and_stem(text: str) -> str:
+    text = re.sub('[^a-zA-Z]', ' ', text)
+    text = text.lower().split()
+    text = [ps.stem(word) for word in text if word not in STOP_WORDS]
+    return ' '.join(text)
 
-# Apply stemming function to content column
-news_df['content'] = news_df['content'].apply(stemming)
+# Apply cleaning/stemming to the content column
+news_df['content'] = news_df['content'].apply(clean_and_stem)
 
-# Vectorize data
-X = news_df['content'].values
+# Vectorize
+X_texts = news_df['content'].values
 y = news_df['label'].values
 vector = TfidfVectorizer()
-vector.fit(X)
-X = vector.transform(X)
+vector.fit(X_texts)
+X = vector.transform(X_texts)
 
-# Split data into train and test sets
+# Split and train
 X_train, X_test, Y_train, Y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=2)
+model = LogisticRegression(max_iter=1000)
+model.fit(X_train, Y_train)
 
-# Fit logistic regression model
-model = LogisticRegression()
-model.fit(X_train,Y_train)
+# Evaluate and show accuracy (optional but useful)
+y_pred = model.predict(X_test)
+acc = accuracy_score(Y_test, y_pred)
 
-
-# website
+# Streamlit UI
 st.title('Rumour Detector')
+st.write(f"Model test accuracy: {acc:.4f}")
+
 input_text = st.text_input('Enter the news')
 
-def prediction(input_text):
-    input_data = vector.transform([input_text])
-    prediction = model.predict(input_data)
-    return prediction[0]
+def predict_input(text: str) -> int:
+    # Apply same preprocessing as training data
+    cleaned = clean_and_stem(text)
+    input_vec = vector.transform([cleaned])
+    pred = model.predict(input_vec)
+    return int(pred[0])
 
 if input_text:
-    pred = prediction(input_text)
+    pred = predict_input(input_text)
     if pred == 1:
         st.write('It is a Rumour')
     else:
